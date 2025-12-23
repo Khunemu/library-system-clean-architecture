@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <strong>⚠️ 作戦内容の修正</strong>
+            </div>
+            <div class="card-body">
+                <form action="/edit/{{ memo['id'] }}" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">修正内容：</label>
+                        <input type="text" name="user_input" class="form-control" value="{{ memo['content'] }}" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning">修正実行</button>
+                        <a href="/" class="btn btn-secondary">キャンセル</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,392 @@
+
+import os
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# .envファイルを読み込む
+load_dotenv()
+
+app = Flask(__name__)
+app.secret_key = 'secret_key_desu' # 本番では変更推奨
+
+# データベース設定
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Geminiの設定
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+# --- モデル定義 ---
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+# 会話ログを保存するテーブル
+class ChatLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    role = db.Column(db.String(10), nullable=False) # 'user' か 'ai'
+    message = db.Column(db.Text, nullable=False)    # 会話の中身
+    timestamp = db.Column(db.DateTime, default=datetime.now) # 日時
+
+# --- ルート定義 ---
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('chat_ui'))
+    return render_template('index.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+        new_user = User(username=username, password=hashed_password)
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for('login'))
+        except:
+            return "登録エラー：そのユーザー名は既に使われています"
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            return redirect(url_for('chat_ui'))
+        else:
+            return "ログイン失敗：ユーザー名かパスワードが違います"
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('usernaimport os
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# .envファイルを読み込む
+load_dotenv()
+
+app = Flask(__name__)
+app.secret_key = 'secret_key_desu' # 本番では変更推奨
+
+# データベース設定
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Geminiの設定
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+# --- モデル定義 ---
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+# 会話ログを保存するテーブル
+class ChatLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    role = db.Column(db.String(10), nullable=False) # 'user' か 'ai'
+    message = db.Column(db.Text, nullable=False)    # 会話の中身
+    timestamp = db.Column(db.DateTime, default=datetime.now) # 日時
+
+# --- ルート定義 ---
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('chat_ui'))
+    return render_template('index.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+        new_user = User(username=username, password=hashed_password)
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for('login'))
+        except:
+            return "登録エラー：そのユーザー名は既に使われています"
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            return redirect(url_for('chat_ui'))
+        else:
+            return "ログイン失敗：ユーザー名かパスワードが違います"
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('username', None)
+    return redirect(url_for('index'))
+
+# --- チャット機能 ---
+
+# チャット画面 (過去のログを読み込んで表示)
+@app.route('/chat')
+def chat_ui():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # データベースから、このユーザーの会話履歴を古い順に全部持ってくる
+    logs = ChatLog.query.filter_by(user_id=session['user_id']).order_by(ChatLog.timestamp).all()
+    
+    return render_template('chat.html', logs=logs)
+
+# AIとの会話API (会話内容をDBに保存する機能付き)
+@app.route('/api/chat', methods=['POST'])
+def chat_api():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    user_message = data.get('message', '')
+
+    if not user_message:
+        return jsonify({'error': 'Empty message'}), 400
+
+    try:
+        # 1. ユーザーの言葉を記録
+        user_log = ChatLog(user_id=session['user_id'], role='user', message=user_message)
+        db.session.add(user_log)
+        db.session.commit()
+
+        # 2. AIに問い合わせ (Gemini 2.5 Flash)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(user_message)
+        ai_reply = response.text
+
+        # 3. AIの言葉を記録
+        ai_log = ChatLog(user_id=session['user_id'], role='ai', message=ai_reply)
+        db.session.add(ai_log)
+        db.session.commit()
+
+        return jsonify({'reply': ai_reply})
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'AI processing failed'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)me', None)
+    return redirect(url_for('index'))
+
+# --- チャット機能 ---
+
+# チャット画面 (過去のログを読み込んで表示)
+@app.route('/chat')
+def chat_ui():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # データベースから、このユーザーの会話履歴を古い順に全部持ってくる
+    logs = ChatLog.query.filter_by(user_id=session['user_id']).order_by(ChatLog.timestamp).all()
+    
+    return render_template('chat.html', logs=logs)
+
+# AIとの会話API (会話内容をDBに保存する機能付き)
+@app.route('/api/chat', methods=['POST'])
+def chat_api():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    user_message = data.get('message', '')
+
+    if not user_message:
+        return jsonify({'error': 'Empty message'}), 400
+
+    try:
+        # 1. ユーザーの言葉を記録
+        user_log = ChatLog(user_id=session['user_id'], role='user', message=user_message)
+        db.session.add(user_log)
+        db.session.commit()
+
+        # 2. AIに問い合わせ (Gemini 2.5 Flash)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(user_message)
+        ai_reply = response.text
+
+        # 3. AIの言葉を記録
+        ai_log = ChatLog(user_id=session['user_id'], role='ai', message=ai_reply)
+        db.session.add(ai_log)
+        db.session.commit()
+
+        return jsonify({'reply': ai_reply})
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'AI processing failed'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)import os
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# .envファイルを読み込む
+load_dotenv()
+
+app = Flask(__name__)
+app.secret_key = 'secret_key_desu' # 本番では変更推奨
+
+# データベース設定
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Geminiの設定
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+# --- モデル定義 ---
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+# 会話ログを保存するテーブル
+class ChatLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    role = db.Column(db.String(10), nullable=False) # 'user' か 'ai'
+    message = db.Column(db.Text, nullable=False)    # 会話の中身
+    timestamp = db.Column(db.DateTime, default=datetime.now) # 日時
+
+# --- ルート定義 ---
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('chat_ui'))
+    return render_template('index.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+        new_user = User(username=username, password=hashed_password)
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for('login'))
+        except:
+            return "登録エラー：そのユーザー名は既に使われています"
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            return redirect(url_for('chat_ui'))
+        else:
+            return "ログイン失敗：ユーザー名かパスワードが違います"
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('username', None)
+    return redirect(url_for('index'))
+
+# --- チャット機能 ---
+
+# チャット画面 (過去のログを読み込んで表示)
+@app.route('/chat')
+def chat_ui():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # データベースから、このユーザーの会話履歴を古い順に全部持ってくる
+    logs = ChatLog.query.filter_by(user_id=session['user_id']).order_by(ChatLog.timestamp).all()
+    
+    return render_template('chat.html', logs=logs)
+
+# AIとの会話API (会話内容をDBに保存する機能付き)
+@app.route('/api/chat', methods=['POST'])
+def chat_api():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    user_message = data.get('message', '')
+
+    if not user_message:
+        return jsonify({'error': 'Empty message'}), 400
+
+    try:
+        # 1. ユーザーの言葉を記録
+        user_log = ChatLog(user_id=session['user_id'], role='user', message=user_message)
+        db.session.add(user_log)
+        db.session.commit()
+
+        # 2. AIに問い合わせ (Gemini 2.5 Flash)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(user_message)
+        ai_reply = response.text
+
+        # 3. AIの言葉を記録
+        ai_log = ChatLog(user_id=session['user_id'], role='ai', message=ai_reply)
+        db.session.add(ai_log)
+        db.session.commit()
+
+        return jsonify({'reply': ai_reply})
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'AI processing failed'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
