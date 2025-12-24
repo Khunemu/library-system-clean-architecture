@@ -1,16 +1,11 @@
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
 class Isbn:
-    value: str
-    def __post_init__(self):
-        if not self.value:
+    def __init__(self, value: str):
+        if not value:
             raise ValueError("ISBNは必須です")
+        self.value = value
 
-@dataclass
 class Book:
-    isbn: Isbn
-    title: str
-    def __post_init__(self):
-        if not self.title:
-            raise ValueError("本のタイトルは必須です")
+    def __init__(self, isbn: Isbn, title: str, description: str = ""):
+        self.isbn = isbn
+        self.title = title
+        self.description = description  # 紹介文を追加！
